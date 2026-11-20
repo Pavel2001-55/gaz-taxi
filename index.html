@@ -9,213 +9,211 @@
     <script src="https://unpkg.com"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        body { display: flex; flex-direction: column; height: 100vh; background: #f4f4f9; overflow: hidden; }
-        #map { flex: 1; width: 100%; z-index: 1; }
-        .panel {
-            background: #fff; padding: 16px; border-radius: 20px 20px 0 0;
-            box-shadow: 0 -4px 15px rgba(0,0,0,0.1); z-index: 10; position: relative;
+        body { display: flex; flex-direction: column; height: 100vh; background: #e5e5e5; overflow: hidden; }
+        .map-wrapper { position: relative; flex: 1; width: 100%; }
+        #map { width: 100%; height: 100%; z-index: 1; }
+        .center-pin {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%);
+            font-size: 36px; z-index: 500; pointer-events: none;
+            filter: drop-shadow(0 3px 4px rgba(0,0,0,0.4));
         }
-        .field-label { font-size: 12px; font-weight: 600; color: #555; margin-bottom: 4px; display: block; }
-        .input-group { position: relative; margin-bottom: 12px; }
-        .input-row { display: flex; gap: 8px; align-items: center; }
+        .panel {
+            background: #fff; padding: 14px 16px 18px; border-radius: 20px 20px 0 0;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.12); z-index: 600;
+        }
+        .step-badge {
+            display: inline-block; background: #eef5fc; color: #2481cc;
+            font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 8px; margin-bottom: 8px;
+        }
+        .input-row { display: flex; gap: 6px; margin-bottom: 10px; }
         input {
-            width: 100%; padding: 12px 14px; border: 1.5px solid #e0e0e0;
-            border-radius: 12px; font-size: 15px; outline: none; transition: 0.2s;
+            flex: 1; padding: 11px 12px; border: 1.5px solid #dcdcdc;
+            border-radius: 10px; font-size: 14px; outline: none;
         }
         input:focus { border-color: #2481cc; }
-        .btn-pin {
-            background: #eef5fc; color: #2481cc; border: none; padding: 12px;
-            border-radius: 12px; font-size: 18px; cursor: pointer; flex-shrink: 0;
+        .btn-search {
+            background: #f0f2f5; border: none; padding: 0 14px; border-radius: 10px;
+            font-size: 14px; font-weight: 600; color: #333; cursor: pointer;
         }
-        .btn-pin.active { background: #2481cc; color: #fff; }
-        .suggestions {
-            position: absolute; bottom: 100%; left: 0; right: 0; background: #fff;
-            border-radius: 12px; box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
-            max-height: 160px; overflow-y: auto; z-index: 20; display: none;
+        .summary {
+            display: none; background: #f3faf6; border: 1px solid #bce3cb;
+            padding: 10px 12px; border-radius: 12px; margin-bottom: 10px; font-size: 13px;
         }
-        .suggestion-item { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; font-size: 14px; cursor: pointer; }
-        .suggestion-item:hover { background: #f5f8ff; }
-        .hint { font-size: 12px; color: #777; margin-bottom: 10px; text-align: center; }
-        .price-box {
-            display: none; background: #f0f9f4; border: 1px solid #bce3cb;
-            padding: 12px; border-radius: 12px; margin-bottom: 12px;
-            justify-content: space-between; align-items: center;
+        .summary-row { display: flex; justify-content: space-between; margin-top: 4px; font-size: 15px; }
+        .btn-main {
+            width: 100%; padding: 14px; background: #2481cc; color: #fff;
+            border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer;
         }
-        .price-box span { font-size: 14px; color: #2d5a3f; }
-        .price-box strong { font-size: 18px; color: #157347; }
-        .btn-order {
-            width: 100%; padding: 15px; background: #2481cc; color: #fff;
-            border: none; border-radius: 14px; font-size: 16px; font-weight: 600;
-            cursor: pointer; transition: 0.2s;
+        .btn-reset {
+            width: 100%; padding: 10px; background: transparent; color: #777;
+            border: none; font-size: 13px; margin-top: 4px; cursor: pointer; display: none;
         }
-        .btn-order:disabled { background: #b0c4de; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
-<div id="map"></div>
+<div class="map-wrapper">
+    <div id="map"></div>
+    <div class="center-pin" id="centerPin">📍</div>
+</div>
 
 <div class="panel">
-    <div class="hint" id="modeHint">Введите адрес текстом или ткните в нужный дом на карте</div>
+    <div class="step-badge" id="stepBadge">Шаг 1 из 2: Укажите точку подачи (Откуда)</div>
 
-    <div class="input-group">
-        <span class="field-label">Подача такси (Откуда):</span>
-        <div class="suggestions" id="sugFrom"></div>
-        <div class="input-row">
-            <input type="text" id="inputFrom" placeholder="Введите адрес подачи или нажмите 📍" autocomplete="off">
-            <button class="btn-pin active" id="pinFrom" title="Указать на карте">📍</button>
+    <div class="input-row" id="searchRow">
+        <input type="text" id="addrInput" placeholder="Наведите прицел на дом или введите адрес...">
+        <button class="btn-search" id="btnFind">Найти</button>
+    </div>
+
+    <div class="summary" id="summaryBox">
+        <div id="routeDesc" style="color: #444; margin-bottom: 4px;"></div>
+        <div class="summary-row">
+            <span id="distLabel">0 км</span>
+            <strong id="priceLabel" style="color: #157347;">0 BYN</strong>
         </div>
     </div>
 
-    <div class="input-group">
-        <span class="field-label">Пункт назначения (Куда):</span>
-        <div class="suggestions" id="sugTo"></div>
-        <div class="input-row">
-            <input type="text" id="inputTo" placeholder="Куда поедем? (адрес или кнопка 🏁)" autocomplete="off">
-            <button class="btn-pin" id="pinTo" title="Указать на карте">🏁</button>
-        </div>
-    </div>
-
-    <div class="price-box" id="priceBox">
-        <span id="distText">Расстояние: 0 км</span>
-        <strong id="priceText">0 BYN</strong>
-    </div>
-
-    <button class="btn-order" id="btnOrder" disabled>Укажите точки А и Б</button>
+    <button class="btn-main" id="btnAction">✅ Подтвердить точку подачи (Откуда)</button>
+    <button class="btn-reset" id="btnReset">🔄 Выбрать точки заново</button>
 </div>
 
 <script>
     const tg = window.Telegram.WebApp;
     tg.expand();
 
-    // НАСТРОЙКИ ГОРОДА И ТАРИФА (Лельчицы; для Кордовы заменим на -31.4201, -64.1888)
-    const CENTER_LAT = 51.7873;
-    const CENTER_LON = 28.3275;
-    const BASE_PRICE = 3.0;   // Посадка (BYN)
-    const PRICE_PER_KM = 0.8; // Цена за 1 км (BYN)
+    // Настройки (Лельчицы; для Кордовы заменим на -31.4201, -64.1888)
+    const START_LAT = 51.7873;
+    const START_LON = 28.3275;
+    const BASE_PRICE = 3.0;
+    const PRICE_PER_KM = 0.8;
 
-    const map = L.map('map').setView(new Array(CENTER_LAT, CENTER_LON), 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
+    const map = L.map('map', { zoomControl: false }).setView(new Array(START_LAT, START_LON), 15);
+    
+    // Быстрый глобальный слой карт CartoDB (грузится мгновенно без блокировок)
+    L.tileLayer('https://{s}://{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap, © CARTO',
+        maxZoom: 19
     }).addTo(map);
 
-    let activeMode = 'from';
+    let step = 1;
     let pointFrom = null;
     let pointTo = null;
     let markerFrom = null;
     let markerTo = null;
     let routeLine = null;
-    let finalData = null;
+    let orderPayload = null;
 
-    const pinFromBtn = document.getElementById('pinFrom');
-    const pinToBtn = document.getElementById('pinTo');
-    const inputFrom = document.getElementById('inputFrom');
-    const inputTo = document.getElementById('inputTo');
-    const modeHint = document.getElementById('modeHint');
-
-    function setMode(mode) {
-        activeMode = mode;
-        pinFromBtn.classList.toggle('active', mode === 'from');
-        pinToBtn.classList.toggle('active', mode === 'to');
-        modeHint.textContent = mode === 'from'
-            ? 'Режим подачи: введите адрес или ткните в дом ОТКУДА на карте'
-            : 'Режим назначения: введите адрес или ткните в место КУДА на карте';
-    }
-
-    pinFromBtn.onclick = () => setMode('from');
-    pinToBtn.onclick = () => setMode('to');
+    const stepBadge = document.getElementById('stepBadge');
+    const addrInput = document.getElementById('addrInput');
+    const btnFind = document.getElementById('btnFind');
+    const btnAction = document.getElementById('btnAction');
+    const btnReset = document.getElementById('btnReset');
+    const centerPin = document.getElementById('centerPin');
+    const summaryBox = document.getElementById('summaryBox');
+    const searchRow = document.getElementById('searchRow');
 
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(pos => {
-            const { latitude, longitude } = pos.coords;
-            map.setView(new Array(latitude, longitude), 15);
-            setPoint('from', latitude, longitude, 'Моё местоположение');
-            setMode('to');
+            map.setView(new Array(pos.coords.latitude, pos.coords.longitude), 16);
         });
     }
 
-    map.on('click', async (e) => {
-        const { lat, lng } = e.latlng;
-        const addrName = await reverseGeocode(lat, lng);
-        setPoint(activeMode, lat, lng, addrName);
-        if (activeMode === 'from' && !pointTo) setMode('to');
-    });
-
-    function setPoint(type, lat, lon, name) {
-        if (type === 'from') {
-            pointFrom = { lat, lon, name };
-            inputFrom.value = name;
-            if (markerFrom) map.removeLayer(markerFrom);
-            markerFrom = L.marker(new Array(lat, lon)).addTo(map).bindPopup('Подача такси').openPopup();
-        } else {
-            pointTo = { lat, lon, name };
-            inputTo.value = name;
-            if (markerTo) map.removeLayer(markerTo);
-            markerTo = L.marker(new Array(lat, lon)).addTo(map).bindPopup('Куда').openPopup();
-        }
-        calculateRoute();
-    }
-
-    async function reverseGeocode(lat, lon) {
+    btnFind.onclick = async () => {
+        const raw = addrInput.value.trim();
+        if (!raw) return;
+        btnFind.textContent = '...';
+        const q = raw.toLowerCase().includes('лельчиц') || raw.toLowerCase().includes('липлян') ? raw : `Лельчицы, ${raw}`;
         try {
-            const res = await fetch(`https://komoot.io{lon}&lat=${lat}`);
+            const res = await fetch(`https://openstreetmap.org{encodeURIComponent(q)}&format=json&limit=1`);
             const data = await res.json();
-            const first = data.features && data.features.at(0);
-            if (first) {
-                const p = first.properties;
-                return new Array(p.street || p.name, p.housenumber, p.city || p.town || p.village).filter(Boolean).join(', ') || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+            const item = data && data.at(0);
+            if (item) {
+                map.setView(new Array(parseFloat(item.lat), parseFloat(item.lon)), 16);
+            } else {
+                tg.showAlert('Адрес не найден. Просто передвиньте карту пальцем под прицел 📍!');
             }
-        } catch (e) {}
-        return `Точка (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
-    }
+        } catch (e) {
+            tg.showAlert('Ошибка поиска. Передвиньте карту пальцем под прицел 📍!');
+        }
+        btnFind.textContent = 'Найти';
+    };
 
-    function setupAutocomplete(inputEl, sugEl, type) {
-        let timer;
-        inputEl.addEventListener('input', () => {
-            clearTimeout(timer);
-            const q = inputEl.value.trim();
-            if (q.length < 3) { sugEl.style.display = 'none'; return; }
-            timer = setTimeout(async () => {
-                try {
-                    const res = await fetch(`https://komoot.io{encodeURIComponent(q)}&lat=${CENTER_LAT}&lon=${CENTER_LON}&limit=5`);
-                    const data = await res.json();
-                    sugEl.innerHTML = '';
-                    if (data.features && data.features.length > 0) {
-                        data.features.forEach(f => {
-                            const lon = f.geometry.coordinates.at(0);
-                            const lat = f.geometry.coordinates.at(1);
-                            const p = f.properties;
-                            const title = new Array(p.city || p.town || p.village, p.street || p.name, p.housenumber).filter(Boolean).join(', ');
-                            const div = document.createElement('div');
-                            div.className = 'suggestion-item';
-                            div.textContent = title;
-                            div.onclick = () => {
-                                sugEl.style.display = 'none';
-                                map.setView(new Array(lat, lon), 15);
-                                setPoint(type, lat, lon, title);
-                                if (type === 'from' && !pointTo) setMode('to');
-                            };
-                            sugEl.appendChild(div);
-                        });
-                        sugEl.style.display = 'block';
-                    } else {
-                        sugEl.style.display = 'none';
-                    }
-                } catch (e) {}
-            }, 400);
-        });
-    }
+    btnAction.onclick = async () => {
+        const center = map.getCenter();
 
-    setupAutocomplete(inputFrom, document.getElementById('sugFrom'), 'from');
-    setupAutocomplete(inputTo, document.getElementById('sugTo'), 'to');
+        if (step === 1) {
+            const label = addrInput.value.trim() || `Точка А (${center.lat.toFixed(4)}, ${center.lng.toFixed(4)})`;
+            pointFrom = { lat: center.lat, lon: center.lng, name: label };
+            markerFrom = L.marker(new Array(center.lat, center.lng)).addTo(map).bindPopup('Откуда').openPopup();
 
-    async function calculateRoute() {
-        if (!pointFrom || !pointTo) return;
-        const btn = document.getElementById('btnOrder');
-        btn.disabled = true;
-        btn.textContent = 'Считаем маршрут...';
+            step = 2;
+            centerPin.textContent = '🏁';
+            stepBadge.textContent = 'Шаг 2 из 2: Куда поедем?';
+            addrInput.value = '';
+            addrInput.placeholder = 'Сдвиньте карту на точку Б или введите адрес...';
+            btnAction.textContent = '🏁 Подтвердить пункт назначения (Куда)';
+            btnReset.style.display = 'block';
+        } 
+        else if (step === 2) {
+            const label = addrInput.value.trim() || `Точка Б (${center.lat.toFixed(4)}, ${center.lng.toFixed(4)})`;
+            pointTo = { lat: center.lat, lon: center.lng, name: label };
+            markerTo = L.marker(new Array(center.lat, center.lng)).addTo(map).bindPopup('Куда').openPopup();
 
-        try {
-            const url = `https://project-osrm.org{pointFrom.lon},${pointFrom.lat};${pointTo.lon},${pointTo.lat}?overview=full&geometries=geojson`;
-            const res = await fetch(url);
-            const data = await res.json();
+            btnAction.disabled = true;
+            btnAction.textContent = '⏳ Строим маршрут по дорогам...';
+
+            try {
+                const url = `https://project-osrm.org{pointFrom.lon},${pointFrom.lat};${pointTo.lon},${pointTo.lat}?overview=full&geometries=geojson`;
+                const res = await fetch(url);
+                const data = await res.json();
+                const route = data.routes && data.routes.at(0);
+
+                if (data.code === 'Ok' && route) {
+                    const km = Math.round((route.distance / 1000) * 10) / 10;
+                    const rawPrice = BASE_PRICE + (km * PRICE_PER_KM);
+                    const price = Math.round(rawPrice * 2) / 2;
+
+                    routeLine = L.geoJSON(route.geometry, { style: { color: '#2481cc', weight: 5 } }).addTo(map);
+                    map.fitBounds(routeLine.getBounds(), { padding: new Array(35, 35) });
+
+                    step = 3;
+                    centerPin.style.display = 'none';
+                    searchRow.style.display = 'none';
+                    stepBadge.textContent = 'Маршрут готов!';
+                    document.getElementById('routeDesc').textContent = `${pointFrom.name} ➔ ${pointTo.name}`;
+                    document.getElementById('distLabel').textContent = `Путь: ${km} км`;
+                    document.getElementById('priceLabel').textContent = `${price} BYN`;
+                    summaryBox.style.display = 'block';
+
+                    orderPayload = { from_name: pointFrom.name, to_name: pointTo.name, km: km, price: price };
+                    btnAction.disabled = false;
+                    btnAction.style.background = '#157347';
+                    btnAction.textContent = `🚀 Заказать такси за ${price} BYN`;
+                } else {
+                    throw new Error();
+                }
+            } catch (e) {
+                btnAction.disabled = false;
+                btnAction.textContent = '⚠️ Не удалось построить путь. Нажмите сброс.';
+            }
+        } 
+        else if (step === 3 && orderPayload) {
+            tg.sendData(JSON.stringify(orderPayload));
+        }
+    };
+
+    btnReset.onclick = () => {
+        if (markerFrom) map.removeLayer(markerFrom);
+        if (markerTo) map.removeLayer(markerTo);
+        if (routeLine) map.removeLayer(routeLine);
+        pointFrom = null; pointTo = null; orderPayload = null;
+        step = 1;
+        centerPin.textContent = '📍';
+        centerPin.style.display = 'block';
+        searchRow.style.display = 'flex';
+        summaryBox.style.display = 'none';
+        btnReset.style.display = 'none';
+        stepBadge.textContent = 'Шаг 1 из 2: Укажите точку подачи (Откуда)';
+        addrInput.value = '';
+        addrInput.placeholder = 'Наведите прицел на дом или введите адрес...';
+        btnAction.style.background = '#2481cc';
