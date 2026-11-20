@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Gaz Taxi</title>
     <script src="https://telegram.org"></script>
-    <link rel="stylesheet" href="https://cloudflare.com" />
-    <script src="https://cloudflare.com"></script>
+    <link rel="stylesheet" href="./leaflet.css" />
+    <script src="./leaflet.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
         body { display: flex; flex-direction: column; height: 100vh; background: #e5e5e5; overflow: hidden; }
@@ -78,24 +78,35 @@
 </div>
 
 <script>
-    const tg = window.Telegram.WebApp;
-    tg.expand();
+    if (window.Telegram && window.Telegram.WebApp) {
+        window.Telegram.WebApp.expand();
+    }
 
-    // Настройки (Лельчицы; для Кордовы заменим на -31.4201, -64.1888)
     const START_LAT = 51.7873;
     const START_LON = 28.3275;
     const BASE_PRICE = 3.0;
     const PRICE_PER_KM = 0.8;
 
     let map = null;
-    try {
+    const stepBadge = document.getElementById('stepBadge');
+    const addrInput = document.getElementById('addrInput');
+    const btnFind = document.getElementById('btnFind');
+    const btnAction = document.getElementById('btnAction');
+    const btnReset = document.getElementById('btnReset');
+    const centerPin = document.getElementById('centerPin');
+    const summaryBox = document.getElementById('summaryBox');
+    const searchRow = document.getElementById('searchRow');
+
+    if (typeof L === 'undefined') {
+        stepBadge.style.background = '#fde8e8';
+        stepBadge.style.color = '#c81e1e';
+        stepBadge.textContent = '⚠️ Файл leaflet.js не найден в папке репозитория';
+    } else {
         map = L.map('map', { zoomControl: false }).setView(new Array(START_LAT, START_LON), 15);
-        L.tileLayer('https://{s}://{z}/{x}/{y}{r}.png', {
-            attribution: '© OpenStreetMap, © CARTO',
+        L.tileLayer('https://arcgisonline.com{z}/{y}/{x}', {
+            attribution: '© Esri, OpenStreetMap',
             maxZoom: 19
         }).addTo(map);
-    } catch (err) {
-        document.getElementById('stepBadge').textContent = 'Ошибка загрузки карты: проверьте интернет';
     }
 
     let step = 1;
@@ -105,15 +116,6 @@
     let markerTo = null;
     let routeLine = null;
     let orderPayload = null;
-
-    const stepBadge = document.getElementById('stepBadge');
-    const addrInput = document.getElementById('addrInput');
-    const btnFind = document.getElementById('btnFind');
-    const btnAction = document.getElementById('btnAction');
-    const btnReset = document.getElementById('btnReset');
-    const centerPin = document.getElementById('centerPin');
-    const summaryBox = document.getElementById('summaryBox');
-    const searchRow = document.getElementById('searchRow');
 
     if (navigator.geolocation && map) {
         navigator.geolocation.getCurrentPosition(function(pos) {
@@ -130,11 +132,11 @@
         try {
             const res = await fetch('https://openstreetmap.org' + encodeURIComponent(q) + '&format=json&limit=1');
             const data = await res.json();
-            const item = Array.isArray(data) ? data.shift() : null;
+            const item = (data && data.length > 0) ? data.shift() : null;
             if (item) {
                 map.setView(new Array(parseFloat(item.lat), parseFloat(item.lon)), 16);
             } else {
-                alert('Адрес не найден. Просто передвиньте карту пальцем под прицел 📍!');
+                alert('Адрес не найден. Передвиньте карту пальцем под прицел 📍!');
             }
         } catch (e) {
             alert('Ошибка поиска. Передвиньте карту пальцем под прицел 📍!');
@@ -149,7 +151,9 @@
         if (step === 1) {
             const label = addrInput.value.trim() || ('Точка А (' + center.lat.toFixed(4) + ', ' + center.lng.toFixed(4) + ')');
             pointFrom = { lat: center.lat, lon: center.lng, name: label };
-            markerFrom = L.marker(new Array(center.lat, center.lng)).addTo(map);
+            markerFrom = L.circleMarker(new Array(center.lat, center.lng), {
+                radius: 9, fillColor: '#2481cc', color: '#ffffff', weight: 3, fillOpacity: 1
+            }).addTo(map);
 
             step = 2;
             centerPin.textContent = '🏁';
@@ -162,7 +166,9 @@
         else if (step === 2) {
             const label = addrInput.value.trim() || ('Точка Б (' + center.lat.toFixed(4) + ', ' + center.lng.toFixed(4) + ')');
             pointTo = { lat: center.lat, lon: center.lng, name: label };
-            markerTo = L.marker(new Array(center.lat, center.lng)).addTo(map);
+            markerTo = L.circleMarker(new Array(center.lat, center.lng), {
+                radius: 9, fillColor: '#157347', color: '#ffffff', weight: 3, fillOpacity: 1
+            }).addTo(map);
 
             btnAction.disabled = true;
             btnAction.textContent = '⏳ Строим маршрут по дорогам...';
@@ -171,7 +177,7 @@
                 const url = 'https://project-osrm.org' + pointFrom.lon + ',' + pointFrom.lat + ';' + pointTo.lon + ',' + pointTo.lat + '?overview=full&geometries=geojson';
                 const res = await fetch(url);
                 const data = await res.json();
-                const route = (data.routes && Array.isArray(data.routes)) ? data.routes.shift() : null;
+                const route = (data.routes && data.routes.length > 0) ? data.routes.shift() : null;
 
                 if (data.code === 'Ok' && route) {
                     const km = Math.round((route.distance / 1000) * 10) / 10;
@@ -203,16 +209,11 @@
             }
         } 
         else if (step === 3 && orderPayload) {
-            tg.sendData(JSON.stringify(orderPayload));
+            if (window.Telegram && window.Telegram.WebApp) {
+                window.Telegram.WebApp.sendData(JSON.stringify(orderPayload));
+            } else {
+                alert('Заказ готов: ' + orderPayload.price + ' BYN (' + orderPayload.km + ' км)');
+            }
         }
     };
 
-    btnReset.onclick = function() {
-        if (markerFrom) map.removeLayer(markerFrom);
-        if (markerTo) map.removeLayer(markerTo);
-        if (routeLine) map.removeLayer(routeLine);
-        pointFrom = null; pointTo = null; orderPayload = null;
-        step = 1;
-        centerPin.textContent = '📍';
-        centerPin.style.display = 'block';
-        searchRow.style.display = 'flex';
