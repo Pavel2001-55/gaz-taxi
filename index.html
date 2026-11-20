@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gaz Taxi</title>
+    <script src="https://telegram.org"></script>
+    <link rel="stylesheet" href="https://unpkg.com" />
+    <script src="https://unpkg.com"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { display: flex; flex-direction: column; height: 100vh; background: #f4f4f9; overflow: hidden; }
+        #map { flex: 1; width: 100%; z-index: 1; }
+        .panel {
+            background: #fff; padding: 16px; border-radius: 20px 20px 0 0;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.1); z-index: 10; position: relative;
+        }
+        .field-label { font-size: 12px; font-weight: 600; color: #555; margin-bottom: 4px; display: block; }
+        .input-group { position: relative; margin-bottom: 12px; }
+        .input-row { display: flex; gap: 8px; align-items: center; }
+        input {
+            width: 100%; padding: 12px 14px; border: 1.5px solid #e0e0e0;
+            border-radius: 12px; font-size: 15px; outline: none; transition: 0.2s;
+        }
+        input:focus { border-color: #2481cc; }
+        .btn-pin {
+            background: #eef5fc; color: #2481cc; border: none; padding: 12px;
+            border-radius: 12px; font-size: 18px; cursor: pointer; flex-shrink: 0;
+        }
+        .btn-pin.active { background: #2481cc; color: #fff; }
+        .suggestions {
+            position: absolute; bottom: 100%; left: 0; right: 0; background: #fff;
+            border-radius: 12px; box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
+            max-height: 160px; overflow-y: auto; z-index: 20; display: none;
+        }
+        .suggestion-item { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; font-size: 14px; cursor: pointer; }
+        .suggestion-item:hover { background: #f5f8ff; }
+        .hint { font-size: 12px; color: #777; margin-bottom: 10px; text-align: center; }
+        .price-box {
+            display: none; background: #f0f9f4; border: 1px solid #bce3cb;
+            padding: 12px; border-radius: 12px; margin-bottom: 12px;
+            justify-content: space-between; align-items: center;
+        }
+        .price-box span { font-size: 14px; color: #2d5a3f; }
+        .price-box strong { font-size: 18px; color: #157347; }
+        .btn-order {
+            width: 100%; padding: 15px; background: #2481cc; color: #fff;
+            border: none; border-radius: 14px; font-size: 16px; font-weight: 600;
+            cursor: pointer; transition: 0.2s;
+        }
+        .btn-order:disabled { background: #b0c4de; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="panel">
+    <div class="hint" id="modeHint">Введите адрес текстом или ткните в нужный дом на карте</div>
+
+    <div class="input-group">
+        <span class="field-label">Подача такси (Откуда):</span>
+        <div class="suggestions" id="sugFrom"></div>
+        <div class="input-row">
+            <input type="text" id="inputFrom" placeholder="Введите адрес подачи или нажмите 📍" autocomplete="off">
+            <button class="btn-pin active" id="pinFrom" title="Указать на карте">📍</button>
+        </div>
+    </div>
+
+    <div class="input-group">
+        <span class="field-label">Пункт назначения (Куда):</span>
+        <div class="suggestions" id="sugTo"></div>
+        <div class="input-row">
+            <input type="text" id="inputTo" placeholder="Куда поедем? (адрес или кнопка 🏁)" autocomplete="off">
+            <button class="btn-pin" id="pinTo" title="Указать на карте">🏁</button>
+        </div>
+    </div>
+
+    <div class="price-box" id="priceBox">
+        <span id="distText">Расстояние: 0 км</span>
+        <strong id="priceText">0 BYN</strong>
+    </div>
+
+    <button class="btn-order" id="btnOrder" disabled>Укажите точки А и Б</button>
+</div>
+
+<script>
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+
+    // НАСТРОЙКИ ГОРОДА И ТАРИФА (Лельчицы; для Кордовы заменим на -31.4201, -64.1888)
+    const CENTER_LAT = 51.7873;
+    const CENTER_LON = 28.3275;
+    const BASE_PRICE = 3.0;   // Посадка (BYN)
+    const PRICE_PER_KM = 0.8; // Цена за 1 км (BYN)
+
+    const map = L.map('map').setView(new Array(CENTER_LAT, CENTER_LON), 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    let activeMode = 'from';
+    let pointFrom = null;
+    let pointTo = null;
+    let markerFrom = null;
+    let markerTo = null;
+    let routeLine = null;
+    let finalData = null;
+
+    const pinFromBtn = document.getElementById('pinFrom');
+    const pinToBtn = document.getElementById('pinTo');
+    const inputFrom = document.getElementById('inputFrom');
+    const inputTo = document.getElementById('inputTo');
+    const modeHint = document.getElementById('modeHint');
+
+    function setMode(mode) {
+        activeMode = mode;
+        pinFromBtn.classList.toggle('active', mode === 'from');
+        pinToBtn.classList.toggle('active', mode === 'to');
+        modeHint.textContent = mode === 'from'
+            ? 'Режим подачи: введите адрес или ткните в дом ОТКУДА на карте'
+            : 'Режим назначения: введите адрес или ткните в место КУДА на карте';
+    }
+
+    pinFromBtn.onclick = () => setMode('from');
+    pinToBtn.onclick = () => setMode('to');
+
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+            const { latitude, longitude } = pos.coords;
+            map.setView(new Array(latitude, longitude), 15);
+            setPoint('from', latitude, longitude, 'Моё местоположение');
+            setMode('to');
+        });
+    }
+
+    map.on('click', async (e) => {
+        const { lat, lng } = e.latlng;
+        const addrName = await reverseGeocode(lat, lng);
+        setPoint(activeMode, lat, lng, addrName);
+        if (activeMode === 'from' && !pointTo) setMode('to');
+    });
+
+    function setPoint(type, lat, lon, name) {
+        if (type === 'from') {
+            pointFrom = { lat, lon, name };
+            inputFrom.value = name;
+            if (markerFrom) map.removeLayer(markerFrom);
+            markerFrom = L.marker(new Array(lat, lon)).addTo(map).bindPopup('Подача такси').openPopup();
+        } else {
+            pointTo = { lat, lon, name };
+            inputTo.value = name;
+            if (markerTo) map.removeLayer(markerTo);
+            markerTo = L.marker(new Array(lat, lon)).addTo(map).bindPopup('Куда').openPopup();
+        }
+        calculateRoute();
+    }
+
+    async function reverseGeocode(lat, lon) {
+        try {
+            const res = await fetch(`https://komoot.io{lon}&lat=${lat}`);
+            const data = await res.json();
+            const first = data.features && data.features.at(0);
+            if (first) {
+                const p = first.properties;
+                return new Array(p.street || p.name, p.housenumber, p.city || p.town || p.village).filter(Boolean).join(', ') || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+            }
+        } catch (e) {}
+        return `Точка (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
+    }
+
+    function setupAutocomplete(inputEl, sugEl, type) {
+        let timer;
+        inputEl.addEventListener('input', () => {
+            clearTimeout(timer);
+            const q = inputEl.value.trim();
+            if (q.length < 3) { sugEl.style.display = 'none'; return; }
+            timer = setTimeout(async () => {
+                try {
+                    const res = await fetch(`https://komoot.io{encodeURIComponent(q)}&lat=${CENTER_LAT}&lon=${CENTER_LON}&limit=5`);
+                    const data = await res.json();
+                    sugEl.innerHTML = '';
+                    if (data.features && data.features.length > 0) {
+                        data.features.forEach(f => {
+                            const lon = f.geometry.coordinates.at(0);
+                            const lat = f.geometry.coordinates.at(1);
+                            const p = f.properties;
+                            const title = new Array(p.city || p.town || p.village, p.street || p.name, p.housenumber).filter(Boolean).join(', ');
+                            const div = document.createElement('div');
+                            div.className = 'suggestion-item';
+                            div.textContent = title;
+                            div.onclick = () => {
+                                sugEl.style.display = 'none';
+                                map.setView(new Array(lat, lon), 15);
+                                setPoint(type, lat, lon, title);
+                                if (type === 'from' && !pointTo) setMode('to');
+                            };
+                            sugEl.appendChild(div);
+                        });
+                        sugEl.style.display = 'block';
+                    } else {
+                        sugEl.style.display = 'none';
+                    }
+                } catch (e) {}
+            }, 400);
+        });
+    }
+
+    setupAutocomplete(inputFrom, document.getElementById('sugFrom'), 'from');
+    setupAutocomplete(inputTo, document.getElementById('sugTo'), 'to');
+
+    async function calculateRoute() {
+        if (!pointFrom || !pointTo) return;
+        const btn = document.getElementById('btnOrder');
+        btn.disabled = true;
+        btn.textContent = 'Считаем маршрут...';
+
+        try {
+            const url = `https://project-osrm.org{pointFrom.lon},${pointFrom.lat};${pointTo.lon},${pointTo.lat}?overview=full&geometries=geojson`;
+            const res = await fetch(url);
+            const data = await res.json();
