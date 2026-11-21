@@ -5,23 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Gaz Taxi</title>
     <script src="https://telegram.org"></script>
-    <link rel="stylesheet" href="./leaflet.css" />
-    <script src="./leaflet.js"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        body { display: flex; flex-direction: column; height: 100vh; background: #e5e5e5; overflow: hidden; }
-        .map-wrapper { position: relative; flex: 1; width: 100%; }
-        #map { width: 100%; height: 100%; z-index: 1; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; user-select: none; }
+        body { display: flex; flex-direction: column; height: 100vh; background: #e5e3df; overflow: hidden; }
+        .map-wrapper { position: relative; flex: 1; width: 100%; overflow: hidden; touch-action: none; }
+        #tilesLayer { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+        #tilesLayer img { position: absolute; width: 256px; height: 256px; display: block; }
         .center-pin {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%);
             font-size: 38px; z-index: 500; pointer-events: none;
             filter: drop-shadow(0 3px 4px rgba(0,0,0,0.4));
         }
+        .zoom-box {
+            position: absolute; left: 14px; top: 16px; z-index: 550;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .zoom-btn {
+            width: 38px; height: 38px; background: #fff; border: none; border-radius: 10px;
+            font-size: 20px; font-weight: 700; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
         .btn-gps-float {
             position: absolute; right: 14px; bottom: 16px; z-index: 550;
             background: #fff; color: #2481cc; border: none; border-radius: 50px;
             padding: 10px 14px; font-size: 13px; font-weight: 700;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.22); cursor: pointer;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.22);
         }
         .panel {
             background: #fff; padding: 12px 14px 16px; border-radius: 20px 20px 0 0;
@@ -34,12 +41,12 @@
         .input-row { display: flex; gap: 6px; margin-bottom: 8px; }
         input {
             flex: 1; padding: 10px 12px; border: 1.5px solid #dcdcdc;
-            border-radius: 10px; font-size: 14px; outline: none;
+            border-radius: 10px; font-size: 14px; outline: none; user-select: text;
         }
         input:focus { border-color: #2481cc; }
         .btn-search {
             background: #f0f2f5; border: none; padding: 0 14px; border-radius: 10px;
-            font-size: 14px; font-weight: 600; color: #333; cursor: pointer;
+            font-size: 14px; font-weight: 600; color: #333;
         }
         .summary {
             display: none; background: #f3faf6; border: 1px solid #bce3cb;
@@ -48,19 +55,23 @@
         .summary-row { display: flex; justify-content: space-between; margin-top: 4px; font-size: 15px; }
         .btn-main {
             width: 100%; padding: 13px; background: #2481cc; color: #fff;
-            border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer;
+            border: none; border-radius: 12px; font-size: 15px; font-weight: 600;
         }
         .btn-reset {
             width: 100%; padding: 8px; background: transparent; color: #777;
-            border: none; font-size: 13px; margin-top: 4px; cursor: pointer; display: none;
+            border: none; font-size: 13px; margin-top: 4px; display: none;
         }
     </style>
 </head>
 <body>
 
-<div class="map-wrapper">
-    <div id="map"></div>
+<div class="map-wrapper" id="mapBox">
+    <div id="tilesLayer"></div>
     <div class="center-pin" id="centerPin">📍</div>
+    <div class="zoom-box">
+        <button type="button" class="zoom-btn" id="btnPlus">+</button>
+        <button type="button" class="zoom-btn" id="btnMinus">−</button>
+    </div>
     <button type="button" class="btn-gps-float" id="btnGps">📡 Моё GPS</button>
 </div>
 
@@ -88,12 +99,14 @@
     var tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
     if (tg) { tg.expand(); }
 
-    var START_LAT = 51.7873;
-    var START_LON = 28.3275;
+    var curLat = 51.7873;
+    var curLon = 28.3275;
+    var curZoom = 15;
     var BASE_PRICE = 3.0;
     var PRICE_PER_KM = 0.8;
 
-    var map = null;
+    var mapBox = document.getElementById('mapBox');
+    var tilesLayer = document.getElementById('tilesLayer');
     var stepBadge = document.getElementById('stepBadge');
     var addrInput = document.getElementById('addrInput');
     var btnFind = document.getElementById('btnFind');
@@ -104,120 +117,116 @@
     var summaryBox = document.getElementById('summaryBox');
     var searchRow = document.getElementById('searchRow');
 
-    if (typeof L !== 'undefined') {
-        map = L.map('map', { zoomControl: false }).setView(new Array(START_LAT, START_LON), 15);
-        L.tileLayer('https://arcgisonline.com{z}/{y}/{x}', {
-            attribution: '© Esri, OpenStreetMap',
-            maxZoom: 19
-        }).addTo(map);
-    } else {
-        stepBadge.textContent = '⚠️ Ошибка загрузки leaflet.js';
+    function latLonToWorld(lat, lon, z) {
+        var n = Math.pow(2, z);
+        var x = (lon + 180) / 360 * n * 256;
+        var rad = lat * Math.PI / 180;
+        var y = (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * n * 256;
+        return { x: x, y: y };
     }
 
-    var step = 1;
-    var pointFrom = null;
-    var pointTo = null;
-    var markerFrom = null;
-    var markerTo = null;
-    var routeLine = null;
-    var orderPayload = null;
+    function worldToLatLon(x, y, z) {
+        var n = Math.pow(2, z);
+        var lon = x / (n * 256) * 360 - 180;
+        var latRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * y / (n * 256))));
+        var lat = latRad * 180 / Math.PI;
+        return { lat: lat, lon: lon };
+    }
 
-    function goToGps() {
-        if (!navigator.geolocation || !map) {
-            alert('GPS недоступен. Передвиньте карту пальцем под прицел 📍!');
+    function renderMap() {
+        var w = mapBox.clientWidth || window.innerWidth;
+        var h = mapBox.clientHeight || (window.innerHeight - 170);
+        var centerPx = latLonToWorld(curLat, curLon, curZoom);
+        var topLeftX = centerPx.x - w / 2;
+        var topLeftY = centerPx.y - h / 2;
+
+        var startTileX = Math.floor(topLeftX / 256);
+        var startTileY = Math.floor(topLeftY / 256);
+        var endTileX = Math.floor((topLeftX + w) / 256);
+        var endTileY = Math.floor((topLeftY + h) / 256);
+
+        var maxTile = Math.pow(2, curZoom);
+        var html = '';
+        for (var tx = startTileX; tx <= endTileX; tx++) {
+            for (var ty = startTileY; ty <= endTileY; ty++) {
+                if (ty < 0 || ty >= maxTile) continue;
+                var wrappedX = ((tx % maxTile) + maxTile) % maxTile;
+                var px = Math.round(tx * 256 - topLeftX);
+                var py = Math.round(ty * 256 - topLeftY);
+                var url = 'https://arcgisonline.com' + curZoom + '/' + ty + '/' + wrappedX;
+                html += '<img src="' + url + '" style="left:' + px + 'px;top:' + py + 'px;" />';
+            }
+        }
+        tilesLayer.innerHTML = html;
+    }
+
+    var dragging = false;
+    var lastX = 0, lastY = 0;
+
+    function startDrag(x, y) { dragging = true; lastX = x; lastY = y; }
+    function moveDrag(x, y) {
+        if (!dragging) return;
+        var dx = x - lastX;
+        var dy = y - lastY;
+        lastX = x; lastY = y;
+        var c = latLonToWorld(curLat, curLon, curZoom);
+        var next = worldToLatLon(c.x - dx, c.y - dy, curZoom);
+        curLat = next.lat;
+        curLon = next.lon;
+        renderMap();
+    }
+    function endDrag() { dragging = false; }
+
+    mapBox.ontouchstart = function(e) {
+        if (e.touches && e.touches.length === 1) {
+            var t = e.touches.item(0);
+            startDrag(t.clientX, t.clientY);
+        }
+    };
+    mapBox.ontouchmove = function(e) {
+        if (e.touches && e.touches.length === 1) {
+            var t = e.touches.item(0);
+            moveDrag(t.clientX, t.clientY);
+        }
+    };
+    mapBox.ontouchend = endDrag;
+    mapBox.onmousedown = function(e) { startDrag(e.clientX, e.clientY); };
+    window.onmousemove = function(e) { moveDrag(e.clientX, e.clientY); };
+    window.onmouseup = endDrag;
+
+    document.getElementById('btnPlus').onclick = function() {
+        if (curZoom < 18) { curZoom++; renderMap(); }
+    };
+    document.getElementById('btnMinus').onclick = function() {
+        if (curZoom > 10) { curZoom--; renderMap(); }
+    };
+
+    btnGps.onclick = function() {
+        if (!navigator.geolocation) {
+            alert('GPS недоступен. Сдвиньте карту пальцем!');
             return;
         }
         btnGps.textContent = '⏳ Поиск GPS...';
         navigator.geolocation.getCurrentPosition(function(pos) {
-            map.setView(new Array(pos.coords.latitude, pos.coords.longitude), 17);
+            curLat = pos.coords.latitude;
+            curLon = pos.coords.longitude;
+            curZoom = 17;
+            renderMap();
             btnGps.textContent = '📡 Моё GPS';
         }, function() {
             btnGps.textContent = '📡 Моё GPS';
-            alert('Не удалось получить GPS. Сдвиньте карту пальцем!');
+            alert('Не удалось определить GPS. Сдвиньте карту пальцем!');
         }, { timeout: 7000 });
-    }
-
-    btnGps.onclick = goToGps;
+    };
 
     btnFind.onclick = function() {
         var raw = addrInput.value.trim();
-        if (!raw || !map) return;
+        if (!raw) return;
         btnFind.textContent = '...';
         var lower = raw.toLowerCase();
         var clean = raw.replace(/кв\.?\s*\d+/gi, '').replace(/подъезд\s*\d+/gi, '').trim();
         var q = (lower.indexOf('лельчиц') !== -1 || lower.indexOf('липлян') !== -1 || lower.indexOf('буйнович') !== -1) ? clean : ('Лельчицы, ' + clean);
 
         fetch('https://openstreetmap.org' + encodeURIComponent(q) + '&format=json&limit=1')
-            .then(function(res) { return res.json(); })
+            .then(function(r) { return r.json(); })
             .then(function(data) {
-                var item = (data && data.length > 0) ? data.shift() : null;
-                if (item) {
-                    map.setView(new Array(parseFloat(item.lat), parseFloat(item.lon)), 17);
-                } else {
-                    alert('Точный дом не найден — сдвиньте карту пальцем под прицел 📍!');
-                }
-                btnFind.textContent = 'Найти';
-            })
-            .catch(function() {
-                alert('Ошибка поиска. Сдвиньте карту пальцем под прицел 📍!');
-                btnFind.textContent = 'Найти';
-            });
-    };
-
-    function calcAirKm(lat1, lon1, lat2, lon2) {
-        var R = 6371;
-        var dLat = (lat2 - lat1) * Math.PI / 180;
-        var dLon = (lon2 - lon1) * Math.PI / 180;
-        var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                Math.sin(dLon/2) * Math.sin(dLon/2);
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 1.25;
-    }
-
-    function finishRoute(km, geojson) {
-        if (geojson) {
-            routeLine = L.geoJSON(geojson, { style: { color: '#2481cc', weight: 5 } }).addTo(map);
-        } else {
-            routeLine = L.polyline(new Array(new Array(pointFrom.lat, pointFrom.lon), new Array(pointTo.lat, pointTo.lon)), { color: '#2481cc', weight: 4, dashArray: '8, 8' }).addTo(map);
-        }
-        map.fitBounds(routeLine.getBounds(), { padding: new Array(35, 35) });
-
-        var price = Math.round((BASE_PRICE + km * PRICE_PER_KM) * 2) / 2;
-
-        step = 3;
-        centerPin.style.display = 'none';
-        searchRow.style.display = 'none';
-        btnGps.style.display = 'none';
-        stepBadge.textContent = 'Маршрут готов!';
-        document.getElementById('routeDesc').textContent = pointFrom.name + ' ➔ ' + pointTo.name;
-        document.getElementById('distLabel').textContent = 'Путь: ~' + km + ' км';
-        document.getElementById('priceLabel').textContent = price + ' BYN';
-        summaryBox.style.display = 'block';
-
-        orderPayload = { from_name: pointFrom.name, to_name: pointTo.name, km: km, price: price };
-        btnAction.disabled = false;
-        btnAction.style.background = '#157347';
-        btnAction.textContent = '🚀 Заказать такси за ' + price + ' BYN';
-    }
-
-    btnAction.onclick = function() {
-        if (!map) return;
-        var center = map.getCenter();
-
-        if (step === 1) {
-            var label = addrInput.value.trim() || ('Точка А (' + center.lat.toFixed(4) + ', ' + center.lng.toFixed(4) + ')');
-            pointFrom = { lat: center.lat, lon: center.lng, name: label };
-            markerFrom = L.circleMarker(new Array(center.lat, center.lng), {
-                radius: 9, fillColor: '#2481cc', color: '#ffffff', weight: 3, fillOpacity: 1
-            }).addTo(map);
-
-            step = 2;
-            centerPin.textContent = '🏁';
-            stepBadge.textContent = 'Шаг 2 из 2: Куда поедем?';
-            addrInput.value = '';
-            addrInput.placeholder = 'Введите адрес (напр. Липляны) или сдвиньте карту...';
-            btnAction.textContent = '🏁 Подтвердить пункт назначения (Куда)';
-            btnReset.style.display = 'block';
-        } 
-        else if (step === 2) {
-            var label = addrInput.value.trim() || ('Точка Б (' + center.lat.toFixed(4) + ', ' + center.lng.toFixed(4) + ')');
