@@ -5,112 +5,179 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Gaz Taxi</title>
     <script src="https://telegram.org"></script>
+    <link rel="stylesheet" href="./leaflet.css" />
+    <script src="./leaflet.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        body { background: #f2f4f8; color: #1c1e21; padding: 16px; display: flex; flex-direction: column; min-height: 100vh; }
-        .header { text-align: center; margin-bottom: 16px; }
-        .header h2 { font-size: 20px; color: #2481cc; }
-        .header p { font-size: 13px; color: #666; margin-top: 4px; }
-        .card { background: #fff; border-radius: 16px; padding: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.06); margin-bottom: 14px; }
-        label { display: block; font-size: 13px; font-weight: 600; color: #444; margin-bottom: 6px; }
-        input, select {
-            width: 100%; padding: 12px; border: 1.5px solid #dce1e6; border-radius: 10px;
-            font-size: 15px; background: #fff; margin-bottom: 10px; outline: none;
+        body { display: flex; flex-direction: column; height: 100vh; background: #e5e5e5; overflow: hidden; }
+        .map-wrapper { position: relative; flex: 1; width: 100%; }
+        #map { width: 100%; height: 100%; z-index: 1; }
+        .center-pin {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%);
+            font-size: 38px; z-index: 500; pointer-events: none;
+            filter: drop-shadow(0 3px 4px rgba(0,0,0,0.4));
         }
-        input:focus, select:focus { border-color: #2481cc; }
-        .btn-gps {
-            width: 100%; padding: 11px; background: #eef5fc; color: #2481cc; border: none;
-            border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 12px;
+        .btn-gps-float {
+            position: absolute; right: 14px; bottom: 16px; z-index: 550;
+            background: #fff; color: #2481cc; border: none; border-radius: 50px;
+            padding: 10px 14px; font-size: 13px; font-weight: 700;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.22); cursor: pointer;
         }
-        .price-card {
-            display: none; background: #eefaf3; border: 1.5px solid #bce3cb;
-            border-radius: 14px; padding: 14px; margin-bottom: 14px; text-align: center;
+        .panel {
+            background: #fff; padding: 12px 14px 16px; border-radius: 20px 20px 0 0;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.12); z-index: 600;
         }
-        .price-card .km { font-size: 14px; color: #2d5a3f; }
-        .price-card .cost { font-size: 24px; font-weight: 700; color: #157347; margin-top: 4px; }
-        .btn-calc {
-            width: 100%; padding: 14px; background: #2481cc; color: #fff; border: none;
-            border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer;
+        .step-badge {
+            display: inline-block; background: #eef5fc; color: #2481cc;
+            font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 8px; margin-bottom: 8px;
         }
-        .btn-order {
-            display: none; width: 100%; padding: 15px; background: #157347; color: #fff;
-            border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 10px;
+        .input-row { display: flex; gap: 6px; margin-bottom: 8px; }
+        input {
+            flex: 1; padding: 10px 12px; border: 1.5px solid #dcdcdc;
+            border-radius: 10px; font-size: 14px; outline: none;
+        }
+        input:focus { border-color: #2481cc; }
+        .btn-search {
+            background: #f0f2f5; border: none; padding: 0 14px; border-radius: 10px;
+            font-size: 14px; font-weight: 600; color: #333; cursor: pointer;
+        }
+        .summary {
+            display: none; background: #f3faf6; border: 1px solid #bce3cb;
+            padding: 10px 12px; border-radius: 12px; margin-bottom: 10px; font-size: 13px;
+        }
+        .summary-row { display: flex; justify-content: space-between; margin-top: 4px; font-size: 15px; }
+        .btn-main {
+            width: 100%; padding: 13px; background: #2481cc; color: #fff;
+            border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer;
+        }
+        .btn-reset {
+            width: 100%; padding: 8px; background: transparent; color: #777;
+            border: none; font-size: 13px; margin-top: 4px; cursor: pointer; display: none;
         }
     </style>
 </head>
 <body>
 
-<div class="header">
-    <h2>🚕 Газ Такси</h2>
-    <p>Быстрый заказ поездки</p>
+<div class="map-wrapper">
+    <div id="map"></div>
+    <div class="center-pin" id="centerPin">📍</div>
+    <button type="button" class="btn-gps-float" id="btnGps">📡 Моё GPS</button>
 </div>
 
-<div class="card">
-    <label>📍 Откуда вас забрать (Точка А):</label>
-    <button type="button" class="btn-gps" id="btnGps">📡 Определить моё местоположение по GPS</button>
-    <select id="selectFrom">
-        <option value="">-- Или выберите точку в Лельчицах --</option>
-        <option value="51.7895,28.3310">ул. Советская (район д. 97)</option>
-        <option value="51.7873,28.3275">Центр / Автостанция Лельчицы</option>
-        <option value="51.7840,28.3220">Районная больница (ЦРБ)</option>
-        <option value="51.7910,28.3240">Евроопт / Рынок</option>
-    </select>
-    <input type="text" id="textFrom" placeholder="Уточните дом и квартиру (например: д. 97, кв. 27)">
+<div class="panel">
+    <div class="step-badge" id="stepBadge">Шаг 1 из 2: Точка подачи (Откуда)</div>
 
-    <label style="margin-top: 8px;">🏁 Куда поедем (Точка Б):</label>
-    <select id="selectTo">
-        <option value="">-- Выберите пункт назначения --</option>
-        <option value="51.7161,28.4319">аг. Липляны (Клуб / Центр)</option>
-        <option value="51.7873,28.3275">Центр / Автостанция Лельчицы</option>
-        <option value="51.7895,28.3310">ул. Советская (район д. 97)</option>
-        <option value="51.7840,28.3220">Районная больница (ЦРБ)</option>
-        <option value="51.7910,28.3240">Евроопт / Рынок</option>
-        <option value="51.8322,28.2511">аг. Буйновичи</option>
-    </select>
-    <input type="text" id="textTo" placeholder="Или впишите любой адрес словами...">
+    <div class="input-row" id="searchRow">
+        <input type="text" id="addrInput" placeholder="Введите адрес (напр. Советская 97, кв 27)...">
+        <button type="button" class="btn-search" id="btnFind">Найти</button>
+    </div>
+
+    <div class="summary" id="summaryBox">
+        <div id="routeDesc" style="color: #444; margin-bottom: 4px;"></div>
+        <div class="summary-row">
+            <span id="distLabel">0 км</span>
+            <strong id="priceLabel" style="color: #157347;">0 BYN</strong>
+        </div>
+    </div>
+
+    <button type="button" class="btn-main" id="btnAction">✅ Подтвердить точку подачи (Откуда)</button>
+    <button type="button" class="btn-reset" id="btnReset">🔄 Выбрать точки заново</button>
 </div>
-
-<div class="price-card" id="priceCard">
-    <div class="km" id="kmText">Расстояние: 0 км</div>
-    <div class="cost" id="costText">0 BYN</div>
-</div>
-
-<button type="button" class="btn-calc" id="btnCalc">🧮 Рассчитать стоимость</button>
-<button type="button" class="btn-order" id="btnOrder">🚀 Заказать такси</button>
 
 <script>
     var tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
     if (tg) { tg.expand(); }
 
+    var START_LAT = 51.7873;
+    var START_LON = 28.3275;
     var BASE_PRICE = 3.0;
     var PRICE_PER_KM = 0.8;
-    var gpsFrom = null;
-    var finalOrder = null;
 
+    var map = null;
+    var stepBadge = document.getElementById('stepBadge');
+    var addrInput = document.getElementById('addrInput');
+    var btnFind = document.getElementById('btnFind');
     var btnGps = document.getElementById('btnGps');
-    var selectFrom = document.getElementById('selectFrom');
-    var textFrom = document.getElementById('textFrom');
-    var selectTo = document.getElementById('selectTo');
-    var textTo = document.getElementById('textTo');
-    var btnCalc = document.getElementById('btnCalc');
-    var btnOrder = document.getElementById('btnOrder');
-    var priceCard = document.getElementById('priceCard');
+    var btnAction = document.getElementById('btnAction');
+    var btnReset = document.getElementById('btnReset');
+    var centerPin = document.getElementById('centerPin');
+    var summaryBox = document.getElementById('summaryBox');
+    var searchRow = document.getElementById('searchRow');
 
-    btnGps.onclick = function() {
-        if (!navigator.geolocation) {
-            alert('GPS не поддерживается. Выберите точку из списка ниже!');
+    if (typeof L !== 'undefined') {
+        map = L.map('map', { zoomControl: false }).setView(new Array(START_LAT, START_LON), 15);
+        L.tileLayer('https://arcgisonline.com{z}/{y}/{x}', {
+            attribution: '© Esri, OpenStreetMap',
+            maxZoom: 19
+        }).addTo(map);
+    } else {
+        stepBadge.textContent = '⚠️ Ошибка загрузки leaflet.js';
+    }
+
+    var step = 1;
+    var pointFrom = null;
+    var pointTo = null;
+    var markerFrom = null;
+    var markerTo = null;
+    var routeLine = null;
+    var orderPayload = null;
+
+    function goToGps() {
+        if (!navigator.geolocation || !map) {
+            alert('GPS недоступен. Передвиньте карту пальцем под прицел 📍!');
             return;
         }
-        btnGps.textContent = '⏳ Определяем координаты...';
+        btnGps.textContent = '⏳ Поиск GPS...';
         navigator.geolocation.getCurrentPosition(function(pos) {
-            gpsFrom = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-            btnGps.style.background = '#d1fae5';
-            btnGps.style.color = '#065f46';
-            btnGps.textContent = '✅ Ваша геопозиция определена!';
-            selectFrom.value = '';
+            map.setView(new Array(pos.coords.latitude, pos.coords.longitude), 17);
+            btnGps.textContent = '📡 Моё GPS';
         }, function() {
-            btnGps.textContent = '⚠️ Нет доступа к GPS. Выберите адрес из списка!';
+            btnGps.textContent = '📡 Моё GPS';
+            alert('Не удалось получить GPS. Сдвиньте карту пальцем!');
         }, { timeout: 7000 });
+    }
+
+    btnGps.onclick = goToGps;
+    goToGps();
+
+    btnFind.onclick = async function() {
+        var raw = addrInput.value.trim();
+        if (!raw || !map) return;
+        btnFind.textContent = '...';
+        var lower = raw.toLowerCase();
+        var clean = raw.replace(/кв\.?\s*\d+/gi, '').replace(/подъезд\s*\d+/gi, '').trim();
+        var q = (lower.indexOf('лельчиц') !== -1 || lower.indexOf('липлян') !== -1 || lower.indexOf('буйнович') !== -1) ? clean : ('Лельчицы, ' + clean);
+
+        var found = false;
+        try {
+            var res = await fetch('https://openstreetmap.org' + encodeURIComponent(q) + '&format=json&limit=1');
+            var data = await res.json();
+            var item = (data && data.length > 0) ? data.shift() : null;
+            if (item) {
+                map.setView(new Array(parseFloat(item.lat), parseFloat(item.lon)), 17);
+                found = true;
+            }
+        } catch (e) {}
+
+        if (!found) {
+            try {
+                var res2 = await fetch('https://komoot.io' + encodeURIComponent(q) + '&limit=1');
+                var data2 = await res2.json();
+                var feat = (data2.features && data2.features.length > 0) ? data2.features.shift() : null;
+                if (feat && feat.geometry && feat.geometry.coordinates) {
+                    var coords = feat.geometry.coordinates;
+                    var lon = coords.shift();
+                    var lat = coords.shift();
+                    map.setView(new Array(lat, lon), 17);
+                    found = true;
+                }
+            } catch (e) {}
+        }
+
+        if (!found) {
+            alert('Точный дом не найден — сдвиньте карту пальцем под прицел 📍 (текст адреса сохранится для водителя)!');
+        }
+        btnFind.textContent = 'Найти';
     };
 
     function calcAirKm(lat1, lon1, lat2, lon2) {
@@ -120,85 +187,39 @@
         var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
                 Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
                 Math.sin(dLon/2) * Math.sin(dLon/2);
-        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c * 1.25;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 1.25;
     }
 
-    btnCalc.onclick = async function() {
-        var lat1 = null, lon1 = null, name1 = '';
-        var lat2 = null, lon2 = null, name2 = '';
+    btnAction.onclick = async function() {
+        if (!map) return;
+        var center = map.getCenter();
 
-        if (gpsFrom && !selectFrom.value) {
-            lat1 = gpsFrom.lat; lon1 = gpsFrom.lon;
-            name1 = textFrom.value.trim() ? ('GPS: ' + textFrom.value.trim()) : 'Моё местоположение (GPS)';
-        } else if (selectFrom.value) {
-            var p1 = selectFrom.value.split(',');
-            lat1 = parseFloat(p1.shift());
-            lon1 = parseFloat(p1.shift());
-            name1 = selectFrom.options.item(selectFrom.selectedIndex).text + (textFrom.value.trim() ? ' (' + textFrom.value.trim() + ')' : '');
-        } else if (textFrom.value.trim()) {
-            name1 = textFrom.value.trim();
-        } else {
-            alert('Укажите, откуда вас забрать (нажмите GPS или выберите из списка)!');
-            return;
-        }
+        if (step === 1) {
+            var label = addrInput.value.trim() || ('Точка А (' + center.lat.toFixed(4) + ', ' + center.lng.toFixed(4) + ')');
+            pointFrom = { lat: center.lat, lon: center.lng, name: label };
+            markerFrom = L.circleMarker(new Array(center.lat, center.lng), {
+                radius: 9, fillColor: '#2481cc', color: '#ffffff', weight: 3, fillOpacity: 1
+            }).addTo(map);
 
-        if (selectTo.value) {
-            var p2 = selectTo.value.split(',');
-            lat2 = parseFloat(p2.shift());
-            lon2 = parseFloat(p2.shift());
-            name2 = selectTo.options.item(selectTo.selectedIndex).text + (textTo.value.trim() ? ' (' + textTo.value.trim() + ')' : '');
-        } else if (textTo.value.trim()) {
-            name2 = textTo.value.trim();
-        } else {
-            alert('Выберите пункт назначения из списка или впишите адрес!');
-            return;
-        }
+            step = 2;
+            centerPin.textContent = '🏁';
+            stepBadge.textContent = 'Шаг 2 из 2: Куда поедем?';
+            addrInput.value = '';
+            addrInput.placeholder = 'Введите адрес (напр. Липляны) или сдвиньте карту...';
+            btnAction.textContent = '🏁 Подтвердить пункт назначения (Куда)';
+            btnReset.style.display = 'block';
+        } 
+        else if (step === 2) {
+            var label = addrInput.value.trim() || ('Точка Б (' + center.lat.toFixed(4) + ', ' + center.lng.toFixed(4) + ')');
+            pointTo = { lat: center.lat, lon: center.lng, name: label };
+            markerTo = L.circleMarker(new Array(center.lat, center.lng), {
+                radius: 9, fillColor: '#157347', color: '#ffffff', weight: 3, fillOpacity: 1
+            }).addTo(map);
 
-        btnCalc.disabled = true;
-        btnCalc.textContent = '⏳ Считаем маршрут...';
+            btnAction.disabled = true;
+            btnAction.textContent = '⏳ Строим маршрут по дорогам...';
 
-        var km = 0;
-        if (lat1 && lon1 && lat2 && lon2) {
+            var km = 0;
             try {
-                var url = 'https://project-osrm.org' + lon1 + ',' + lat1 + ';' + lon2 + ',' + lat2 + '?overview=false';
+                var url = 'https://project-osrm.org' + pointFrom.lon + ',' + pointFrom.lat + ';' + pointTo.lon + ',' + pointTo.lat + '?overview=full&geometries=geojson';
                 var res = await fetch(url);
-                var data = await res.json();
-                var route = (data.routes && data.routes.length > 0) ? data.routes.shift() : null;
-                if (data.code === 'Ok' && route) {
-                    km = Math.round((route.distance / 1000) * 10) / 10;
-                } else {
-                    km = Math.round(calcAirKm(lat1, lon1, lat2, lon2) * 10) / 10;
-                }
-            } catch (e) {
-                km = Math.round(calcAirKm(lat1, lon1, lat2, lon2) * 10) / 10;
-            }
-        } else {
-            km = 4.0;
-        }
-
-        var rawPrice = BASE_PRICE + (km * PRICE_PER_KM);
-        var price = Math.round(rawPrice * 2) / 2;
-
-        document.getElementById('kmText').textContent = 'Расстояние: ~' + km + ' км';
-        document.getElementById('costText').textContent = price + ' BYN';
-        priceCard.style.display = 'block';
-
-        finalOrder = { from_name: name1, to_name: name2, km: km, price: price };
-        btnCalc.disabled = false;
-        btnCalc.textContent = '🔄 Пересчитать';
-        btnOrder.style.display = 'block';
-        btnOrder.textContent = '🚀 Заказать такси за ' + price + ' BYN';
-    };
-
-    btnOrder.onclick = function() {
-        if (!finalOrder) return;
-        if (tg) {
-            tg.sendData(JSON.stringify(finalOrder));
-        } else {
-            alert('Заказ отправлен: ' + finalOrder.from_name + ' -> ' + finalOrder.to_name + ' (' + finalOrder.price + ' BYN)');
-        }
-    };
-</script>
-</body>
-</html>
