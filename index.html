@@ -138,9 +138,8 @@
     }
 
     btnGps.onclick = goToGps;
-    goToGps();
 
-    btnFind.onclick = async function() {
+    btnFind.onclick = function() {
         var raw = addrInput.value.trim();
         if (!raw || !map) return;
         btnFind.textContent = '...';
@@ -148,36 +147,21 @@
         var clean = raw.replace(/кв\.?\s*\d+/gi, '').replace(/подъезд\s*\d+/gi, '').trim();
         var q = (lower.indexOf('лельчиц') !== -1 || lower.indexOf('липлян') !== -1 || lower.indexOf('буйнович') !== -1) ? clean : ('Лельчицы, ' + clean);
 
-        var found = false;
-        try {
-            var res = await fetch('https://openstreetmap.org' + encodeURIComponent(q) + '&format=json&limit=1');
-            var data = await res.json();
-            var item = (data && data.length > 0) ? data.shift() : null;
-            if (item) {
-                map.setView(new Array(parseFloat(item.lat), parseFloat(item.lon)), 17);
-                found = true;
-            }
-        } catch (e) {}
-
-        if (!found) {
-            try {
-                var res2 = await fetch('https://komoot.io' + encodeURIComponent(q) + '&limit=1');
-                var data2 = await res2.json();
-                var feat = (data2.features && data2.features.length > 0) ? data2.features.shift() : null;
-                if (feat && feat.geometry && feat.geometry.coordinates) {
-                    var coords = feat.geometry.coordinates;
-                    var lon = coords.shift();
-                    var lat = coords.shift();
-                    map.setView(new Array(lat, lon), 17);
-                    found = true;
+        fetch('https://openstreetmap.org' + encodeURIComponent(q) + '&format=json&limit=1')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                var item = (data && data.length > 0) ? data.shift() : null;
+                if (item) {
+                    map.setView(new Array(parseFloat(item.lat), parseFloat(item.lon)), 17);
+                } else {
+                    alert('Точный дом не найден — сдвиньте карту пальцем под прицел 📍!');
                 }
-            } catch (e) {}
-        }
-
-        if (!found) {
-            alert('Точный дом не найден — сдвиньте карту пальцем под прицел 📍 (текст адреса сохранится для водителя)!');
-        }
-        btnFind.textContent = 'Найти';
+                btnFind.textContent = 'Найти';
+            })
+            .catch(function() {
+                alert('Ошибка поиска. Сдвиньте карту пальцем под прицел 📍!');
+                btnFind.textContent = 'Найти';
+            });
     };
 
     function calcAirKm(lat1, lon1, lat2, lon2) {
@@ -190,7 +174,33 @@
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 1.25;
     }
 
-    btnAction.onclick = async function() {
+    function finishRoute(km, geojson) {
+        if (geojson) {
+            routeLine = L.geoJSON(geojson, { style: { color: '#2481cc', weight: 5 } }).addTo(map);
+        } else {
+            routeLine = L.polyline(new Array(new Array(pointFrom.lat, pointFrom.lon), new Array(pointTo.lat, pointTo.lon)), { color: '#2481cc', weight: 4, dashArray: '8, 8' }).addTo(map);
+        }
+        map.fitBounds(routeLine.getBounds(), { padding: new Array(35, 35) });
+
+        var price = Math.round((BASE_PRICE + km * PRICE_PER_KM) * 2) / 2;
+
+        step = 3;
+        centerPin.style.display = 'none';
+        searchRow.style.display = 'none';
+        btnGps.style.display = 'none';
+        stepBadge.textContent = 'Маршрут готов!';
+        document.getElementById('routeDesc').textContent = pointFrom.name + ' ➔ ' + pointTo.name;
+        document.getElementById('distLabel').textContent = 'Путь: ~' + km + ' км';
+        document.getElementById('priceLabel').textContent = price + ' BYN';
+        summaryBox.style.display = 'block';
+
+        orderPayload = { from_name: pointFrom.name, to_name: pointTo.name, km: km, price: price };
+        btnAction.disabled = false;
+        btnAction.style.background = '#157347';
+        btnAction.textContent = '🚀 Заказать такси за ' + price + ' BYN';
+    }
+
+    btnAction.onclick = function() {
         if (!map) return;
         var center = map.getCenter();
 
@@ -211,15 +221,3 @@
         } 
         else if (step === 2) {
             var label = addrInput.value.trim() || ('Точка Б (' + center.lat.toFixed(4) + ', ' + center.lng.toFixed(4) + ')');
-            pointTo = { lat: center.lat, lon: center.lng, name: label };
-            markerTo = L.circleMarker(new Array(center.lat, center.lng), {
-                radius: 9, fillColor: '#157347', color: '#ffffff', weight: 3, fillOpacity: 1
-            }).addTo(map);
-
-            btnAction.disabled = true;
-            btnAction.textContent = '⏳ Строим маршрут по дорогам...';
-
-            var km = 0;
-            try {
-                var url = 'https://project-osrm.org' + pointFrom.lon + ',' + pointFrom.lat + ';' + pointTo.lon + ',' + pointTo.lat + '?overview=full&geometries=geojson';
-                var res = await fetch(url);
