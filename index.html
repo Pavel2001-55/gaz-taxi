@@ -153,8 +153,9 @@
                 var wrappedX = ((tx % maxTile) + maxTile) % maxTile;
                 var px = Math.round(tx * 256 - topLeftX);
                 var py = Math.round(ty * 256 - topLeftY);
-                var url = 'https://arcgisonline.com' + curZoom + '/' + ty + '/' + wrappedX;
-                html += '<img src="' + url + '" style="left:' + px + 'px;top:' + py + 'px;" />';
+                var osmUrl = 'https://openstreetmap.org' + curZoom + '/' + wrappedX + '/' + ty + '.png';
+                var cartoUrl = 'https://cartocdn.com' + curZoom + '/' + wrappedX + '/' + ty + '.png';
+                html += '<img src="' + osmUrl + '" onerror="this.onerror=null;this.src=\'' + cartoUrl + '\';" style="left:' + px + 'px;top:' + py + 'px;" />';
             }
         }
         tilesLayer.innerHTML = html;
@@ -227,6 +228,3 @@
         var clean = raw.replace(/кв\.?\s*\d+/gi, '').replace(/подъезд\s*\d+/gi, '').trim();
         var q = (lower.indexOf('лельчиц') !== -1 || lower.indexOf('липлян') !== -1 || lower.indexOf('буйнович') !== -1) ? clean : ('Лельчицы, ' + clean);
 
-        fetch('https://openstreetmap.org' + encodeURIComponent(q) + '&format=json&limit=1')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
