@@ -28,7 +28,7 @@
         }
         .badge {
             display: inline-block; background: #eef5fc; color: #2481cc;
-            font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 8px; margin-bottom: 8px;
+            font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 8px; margin-bottom: 6px;
         }
         .hint { font-size: 12px; color: #666; margin-bottom: 8px; }
         .row { display: flex; gap: 6px; margin-bottom: 8px; }
@@ -91,7 +91,7 @@
 
     var BASE_PRICE = 3.0;
     var PRICE_PER_KM = 0.8;
-    var map, routeLine = null, carMark = null, simTimer = null;
+    var map = null;
     var step = 1, pointFrom = null, pointTo = null, orderPayload = null;
 
     var stepBadge = document.getElementById('stepBadge');
@@ -105,23 +105,26 @@
     var summaryBox = document.getElementById('summaryBox');
     var searchRow = document.getElementById('searchRow');
 
-    ymaps.ready(function() {
-        map = new ymaps.Map('ymap', {
-            center: [51.7873, 28.3275],
-            zoom: 16,
-            controls: ['zoomControl']
-        });
+    if (window.ymaps) {
+        ymaps.ready(function() {
+            map = new ymaps.Map('ymap', {
+                center: [51.7873, 28.3275],
+                zoom: 16,
+                controls: ['zoomControl']
+            });
 
-        // Режим отслеживания машины (если открыто из кнопки "Где едет машина")
-        var params = new URLSearchParams(window.location.search);
-        if (params.get('track') === '1') {
-            var pLat = parseFloat(params.get('plat') || '51.7895');
-            var pLon = parseFloat(params.get('plon') || '28.3310');
-            var dLat = parseFloat(params.get('dlat') || '51.7840');
-            var dLon = parseFloat(params.get('dlon') || '28.3220');
-            startLiveCarView([dLat, dLon], [pLat, pLon]);
-        }
-    });
+            var params = new URLSearchParams(window.location.search);
+            if (params.get('track') === '1') {
+                var pLat = parseFloat(params.get('plat') || '51.7895');
+                var pLon = parseFloat(params.get('plon') || '28.3310');
+                var dLat = parseFloat(params.get('dlat') || '51.7840');
+                var dLon = parseFloat(params.get('dlon') || '28.3220');
+                startLiveCarView([dLat, dLon], [pLat, pLon]);
+            }
+        });
+    } else {
+        hintText.textContent = '⚠️ Карта Яндекса не загрузилась — проверьте настройку ключа в кабинете Яндекса';
+    }
 
     function startLiveCarView(carCoords, passCoords) {
         centerPin.style.display = 'none';
@@ -129,10 +132,10 @@
         btnGps.style.display = 'none';
         btnAction.style.display = 'none';
         stepBadge.textContent = '🚕 Водитель уже в пути к вам!';
-        hintText.textContent = '💡 Оплата напрямую водителю в конце поездки. Не забудьте оценить поездку!';
+        hintText.textContent = '💡 Оплата напрямую водителю в конце поездки.';
 
         var passMark = new ymaps.Placemark(passCoords, { iconCaption: 'Вы здесь 📍' }, { preset: 'islands#blueCircleDotIconWithCaption' });
-        carMark = new ymaps.Placemark(carCoords, { iconCaption: 'Такси едет к вам 🚕' }, { preset: 'islands#greenAutoIcon' });
+        var carMark = new ymaps.Placemark(carCoords, { iconCaption: 'Такси едет к вам 🚕' }, { preset: 'islands#greenAutoIcon' });
         map.geoObjects.add(passMark);
         map.geoObjects.add(carMark);
 
@@ -148,7 +151,7 @@
         btnGps.textContent = '⏳ Поиск GPS...';
         navigator.geolocation.getCurrentPosition(function(pos) {
             var coords = [pos.coords.latitude, pos.coords.longitude];
-            map.setCenter(coords, 17);
+            if (map) map.setCenter(coords, 17);
             ymaps.geocode(coords).then(function(res) {
                 var first = res.geoObjects.get(0);
                 if (first) addrInput.value = first.getAddressLine().replace(/^Беларусь,\s*Гомельская область,\s*/i, '');
@@ -162,7 +165,7 @@
 
     btnFind.onclick = function() {
         var raw = addrInput.value.trim();
-        if (!raw) return;
+        if (!raw || !map) return;
         btnFind.textContent = '...';
         var lower = raw.toLowerCase();
         var hasCity = (lower.indexOf('мозыр') !== -1 || lower.indexOf('гомел') !== -1 || lower.indexOf('минск') !== -1 || lower.indexOf('лельчиц') !== -1 || lower.indexOf('липлян') !== -1 || lower.indexOf('буйнович') !== -1);
@@ -180,10 +183,14 @@
     };
 
     btnAction.onclick = function() {
-        var center = map.getCenter();
+        if (!map) return alert('Подождите загрузки карты или обновите страницу!');
+        var c = map.getCenter();
+        var lat = c.slice(0, 1).pop();
+        var lon = c.slice(1, 2).pop();
+
         if (step === 1) {
-            var label = addrInput.value.trim() || ('Точка А (' + center[0].toFixed(4) + ', ' + center[1].toFixed(4) + ')');
-            pointFrom = { coords: center, name: label };
+            var label = addrInput.value.trim() || ('Точка А (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')');
+            pointFrom = { coords: [lat, lon], lat: lat, lon: lon, name: label };
             step = 2;
             centerPin.textContent = '🏁';
             stepBadge.textContent = 'Шаг 2 из 2: Куда поедем?';
@@ -193,14 +200,9 @@
             btnAction.textContent = '🏁 Подтвердить пункт назначения (Куда)';
             btnReset.style.display = 'block';
         } else if (step === 2) {
-            var label = addrInput.value.trim() || ('Точка Б (' + center[0].toFixed(4) + ', ' + center[1].toFixed(4) + ')');
-            pointTo = { coords: center, name: label };
+            var label = addrInput.value.trim() || ('Точка Б (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')');
+            pointTo = { coords: [lat, lon], lat: lat, lon: lon, name: label };
             btnAction.disabled = true;
             btnAction.textContent = '⏳ Строим маршрут по дорогам...';
 
             ymaps.route([pointFrom.coords, pointTo.coords]).then(function(route) {
-                route.getPaths().options.set({ strokeColor: '#2481cc', strokeWidth: 5, opacity: 0.85 });
-                map.geoObjects.add(route);
-                map.setBounds(route.getBounds(), { checkZoomRange: true, zoomMargin: 35 });
-
-                var km = Math.max(1.0, Math.round((route.getLength() / 1000) * 10) / 10);
