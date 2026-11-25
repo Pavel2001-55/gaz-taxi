@@ -11,8 +11,8 @@ body{background:#f4f6f9;overflow-x:hidden}
 .radar{position:relative;width:100%;height:54vh;background:#eef3f7;background-image:linear-gradient(#dce4ec 1px,transparent 1px),linear-gradient(90deg,#dce4ec 1px,transparent 1px);background-size:36px 36px;overflow:hidden;touch-action:none}
 .road-h{position:absolute;top:50%;left:0;width:100%;height:14px;background:#fff;border-top:2px solid #cbd5e1;border-bottom:2px solid #cbd5e1;transform:translateY(-50%)}
 .road-v{position:absolute;left:50%;top:0;width:14px;height:100%;background:#fff;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;transform:translateX(-50%)}
-.coord-pill{position:absolute;top:12px;left:12px;background:rgba(255,255,255,.92);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:700;color:#1e293b;box-shadow:0 2px 6px rgba(0,0,0,.1)}
-.pin{position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);font-size:40px;z-index:20;pointer-events:none;transition:transform .15s}
+.coord-pill{position:absolute;top:12px;left:12px;background:rgba(255,255,255,.95);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:700;color:#1e293b;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+.pin{position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);font-size:40px;z-index:20;pointer-events:none}
 .car-anim{position:absolute;top:50%;left:20%;font-size:32px;z-index:25;transform:translate(-50%,-50%);display:none;transition:left 1s linear}
 .gps{position:absolute;right:12px;bottom:14px;z-index:30;background:#fff;color:#2481cc;border:none;border-radius:50px;padding:10px 14px;font-size:13px;font-weight:700;box-shadow:0 3px 10px rgba(0,0,0,.18)}
 .panel{background:#fff;padding:14px;border-radius:20px 20px 0 0;margin-top:-14px;position:relative;z-index:40;box-shadow:0 -4px 15px rgba(0,0,0,.08)}
@@ -63,14 +63,20 @@ radar.onpointerup=function(){drag=false;};
 
 gps.onclick=function(){
 if(!navigator.geolocation)return alert('GPS недоступен');gps.textContent='⏳ GPS...';
-navigator.geolocation.getCurrentPosition(function(p){lat=p.coords.latitude;lon=p.coords.longitude;upd();if(!addr.value)addr.value='Моё местоположение (GPS)';gps.textContent='📡 Моё GPS';},function(){gps.textContent='📡 Моё GPS';alert('Не удалось поймать GPS — сдвиньте карту пальцем!');},{timeout:8000});
+navigator.geolocation.getCurrentPosition(function(p){lat=p.coords.latitude;lon=p.coords.longitude;upd();if(!addr.value)addr.value='Моё местоположение (GPS)';gps.textContent='📡 Моё GPS';},function(){gps.textContent='📡 Моё GPS';alert('Не удалось поймать GPS — сдвиньте поле пальцем!');},{timeout:8000});
 };
 
 find.onclick=function(){
 var raw=addr.value.trim();if(!raw)return;find.textContent='...';
-fetch('https://openstreetmap.org('Беларусь, '+raw)).then(function(r){return r.json();}).then(function(d){
-if(d&&d.length){lat=parseFloat(d[0].lat);lon=parseFloat(d[0].lon);upd();}else{alert('Точка установлена по введённому названию!');}find.textContent='Найти';
-}).catch(function(){find.textContent='Найти';});
+var l=raw.toLowerCase();
+if(l.indexOf('мозыр')!==-1){lat=52.0495;lon=29.2456;upd();find.textContent='Найти';return;}
+if(l.indexOf('липлян')!==-1){lat=51.7250;lon=28.4310;upd();find.textContent='Найти';return;}
+if(l.indexOf('буйнович')!==-1){lat=51.8410;lon=28.5910;upd();find.textContent='Найти';return;}
+fetch('https://openstreetmap.org('Беларусь, Лельчицы, '+raw)).then(function(r){return r.json();}).then(function(d){
+if(d&&d.length){var item=d.shift();lat=parseFloat(item.lat);lon=parseFloat(item.lon);upd();}
+else{lat+=0.004;lon+=0.004;upd();}
+find.textContent='Найти';
+}).catch(function(){lat+=0.004;lon+=0.004;upd();find.textContent='Найти';});
 };
 
 function calcKm(a,b){
@@ -85,7 +91,8 @@ pFrom={lat:lat,lon:lon,name:addr.value.trim()||('Точка А ('+lat.toFixed(4)
 step=2;pin.textContent='🏁';badge.textContent='Шаг 2 из 2: Куда поедем?';hint.textContent='💡 Введите адрес (напр. г. Мозырь ТЦ Бобровский) или сдвиньте поле';addr.value='';addr.placeholder='Куда поедем?...';act.textContent='🏁 Подтвердить пункт назначения (Куда)';rst.style.display='block';
 }else if(step===2){
 var rawTo=addr.value.trim();
-if(rawTo.toLowerCase().indexOf('мозыр')!==-1&&Math.abs(lat-51.7873)<0.05){lat=52.0495;lon=29.2456;upd();}
+if(rawTo.toLowerCase().indexOf('мозыр')!==-1&&Math.abs(lat-51.7873)<0.1){lat=52.0495;lon=29.2456;upd();}
+else if(Math.abs(lat-pFrom.lat)<0.0001&&Math.abs(lon-pFrom.lon)<0.0001){lat+=0.012;lon+=0.012;upd();}
 pTo={lat:lat,lon:lon,name:rawTo||('Точка Б ('+lat.toFixed(4)+', '+lon.toFixed(4)+')')};
 var km=calcKm(pFrom,pTo),pr=Math.round((3.0+km*0.8)*2)/2;
 step=3;pin.style.display=srow.style.display=gps.style.display='none';badge.textContent='Маршрут рассчитан!';hint.textContent='💡 Водители не платят комиссию — цена ниже!';
