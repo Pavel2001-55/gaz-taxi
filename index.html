@@ -7,24 +7,26 @@ body{font-family:sans-serif;background:#f4f6f9;padding:18px;margin:0}
 h3{margin:0 0 12px;color:#1e293b}
 label{display:block;font-size:13px;font-weight:700;color:#475569;margin:10px 0 4px}
 input{width:100%;box-sizing:border-box;padding:12px;border:1.5px solid #cbd5e1;border-radius:10px;font-size:15px}
-.btn{width:100%;margin-top:16px;padding:14px;background:#15803d;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:700}
+.btn{display:block;text-align:center;text-decoration:none;margin-top:16px;padding:14px;background:#15803d;color:#fff;border-radius:12px;font-size:16px;font-weight:700}
 </style></head><body>
 <div class="box">
 <h3>🚕 Заказ Газ Такси</h3>
 <label>📍 Откуда забрать:</label>
-<input id="f" placeholder="Напр.: Лельчицы, Советская 97">
+<input id="f" oninput="upd()" placeholder="Напр.: Лельчицы, Советская 97">
 <label>🏁 Куда поедем:</label>
-<input id="t" placeholder="Напр.: г. Мозырь ТЦ Бобровский">
-<button type="button" class="btn" onclick="go()">🚀 Заказать такси</button>
+<input id="t" oninput="upd()" placeholder="Напр.: г. Мозырь ТЦ Бобровский">
+<a id="lnk" class="btn" href="https://t.me">🚀 Заказать такси</a>
 </div>
 <script>
-function go(){
-var a=document.getElementById('f').value.trim()||'Лельчицы, центр';
+function upd(){
+var a=document.getElementById('f').value.trim()||'Лельчицы';
 var b=document.getElementById('t').value.trim()||'По городу';
 var km=b.toLowerCase().indexOf('мозыр')!==-1?68:4.5;
 var pr=Math.round((3.0+km*0.8)*2)/2;
 var obj={from_name:a,to_name:b,plat:51.7873,plon:28.3275,km:km,price:pr};
 var b64=btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-window.location.href='https://t.me;
+document.getElementById('lnk').href='https://t.me;
+document.getElementById('lnk').textContent='🚀 Заказать такси за '+pr+' BYN';
 }
+upd();
 </script></body></html>
