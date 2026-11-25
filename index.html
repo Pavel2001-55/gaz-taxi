@@ -8,7 +8,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:sans-serif}
 body{background:#f4f6f9}
-.radar{position:relative;width:100%;height:50vh;background:#eef3f7;background-image:linear-gradient(#dce4ec 1px,transparent 1px),linear-gradient(90deg,#dce4ec 1px,transparent 1px);background-size:36px 36px;overflow:hidden}
+.radar{position:relative;width:100%;height:48vh;background:#eef3f7;background-image:linear-gradient(#dce4ec 1px,transparent 1px),linear-gradient(90deg,#dce4ec 1px,transparent 1px);background-size:36px 36px;overflow:hidden}
 .rh{position:absolute;top:50%;left:0;width:100%;height:14px;background:#fff;border-top:2px solid #cbd5e1;border-bottom:2px solid #cbd5e1;transform:translateY(-50%)}
 .rv{position:absolute;left:50%;top:0;width:14px;height:100%;background:#fff;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;transform:translateX(-50%)}
 .cp{position:absolute;top:12px;left:12px;background:#fff;padding:6px 12px;border-radius:20px;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.15)}
@@ -28,16 +28,16 @@ input{flex:1;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:10px;fon
 </style>
 </head>
 <body>
-<div class="radar" id="radar" ontouchstart="ts(event)" ontouchmove="tm(event)" onmousedown="ms(event)" onmousemove="mm(event)" onmouseup="mu()">
+<div class="radar" id="radar" onclick="mv()">
 <div class="rh"></div><div class="rv"></div>
 <div class="cp" id="cp">📍 Лельчицы: 51.7873, 28.3275</div>
 <div class="pin" id="pin">📍</div>
 <div class="car" id="car">🚕</div>
-<button type="button" class="gps" id="gps" onclick="doGps()">📡 Моё GPS</button>
+<button type="button" class="gps" id="gps" onclick="event.stopPropagation();doGps()">📡 Моё GPS</button>
 </div>
 <div class="panel">
 <div class="badge" id="badge">Шаг 1 из 2: Точка подачи (Откуда)</div>
-<div class="hint" id="hint">💡 Сдвиньте поле пальцем, нажмите GPS или введите адрес</div>
+<div class="hint" id="hint">💡 Нажмите «Моё GPS», введите адрес или коснитесь поля</div>
 <div class="row" id="srow"><input type="text" id="addr" placeholder="Напр.: Советская 97 или г. Мозырь ТЦ Бобровский"><button type="button" class="find" onclick="doFind()">Найти</button></div>
 <div class="sum" id="sum"><div id="rd" style="margin-bottom:4px"></div><div class="srow"><span id="ds">0 км</span><strong id="pr" style="color:#15803d">0 BYN</strong></div></div>
 <button type="button" class="main" id="act" onclick="doAct()">✅ Подтвердить точку подачи (Откуда)</button>
@@ -45,14 +45,10 @@ input{flex:1;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:10px;fon
 </div>
 <script>
 if(window.Telegram&&window.Telegram.WebApp){window.Telegram.WebApp.ready();window.Telegram.WebApp.expand();}
-var lat=51.7873,lon=28.3275,step=1,pFrom=null,pTo=null,pay=null,drag=false,sx=0,sy=0;
+var lat=51.7873,lon=28.3275,step=1,pFrom=null,pTo=null,pay=null;
 function el(id){return document.getElementById(id);}
 function upd(){el('cp').textContent='📍 Координаты: '+lat.toFixed(4)+', '+lon.toFixed(4);}
-function ts(e){if(e.touches&&e.touches.length){sx=e.touches.clientX;sy=e.touches.clientY;}}
-function tm(e){if(e.touches&&e.touches.length){var cx=e.touches.clientX,cy=e.touches.clientY;lon-=(cx-sx)*0.00004;lat+=(cy-sy)*0.00004;sx=cx;sy=cy;upd();}}
-function ms(e){drag=true;sx=e.clientX;sy=e.clientY;}
-function mm(e){if(!drag)return;lon-=(e.clientX-sx)*0.00004;lat+=(e.clientY-sy)*0.00004;sx=e.clientX;sy=e.clientY;upd();}
-function mu(){drag=false;}
+function mv(){lat+=0.0015;lon+=0.0015;upd();}
 
 function doGps(){
 if(!navigator.geolocation){alert('GPS недоступен');return;}
@@ -61,7 +57,7 @@ navigator.geolocation.getCurrentPosition(function(p){
 lat=p.coords.latitude;lon=p.coords.longitude;upd();
 if(!el('addr').value){el('addr').value='Моё местоположение (GPS)';}
 el('gps').textContent='📡 Моё GPS';
-},function(){el('gps').textContent='📡 Моё GPS';alert('Сдвиньте поле пальцем!');},{timeout:8000});
+},function(){el('gps').textContent='📡 Моё GPS';alert('Разрешите геопозицию или введите адрес!');},{timeout:8000});
 }
 
 function doFind(){
