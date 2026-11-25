@@ -44,13 +44,12 @@ input{flex:1;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:10px;fon
 <button type="button" class="rst" id="rst" onclick="doRst()">🔄 Выбрать маршрут заново</button>
 </div>
 <script>
-var tg=(window.Telegram&&window.Telegram.WebApp)?window.Telegram.WebApp:null;
-if(tg){tg.expand();}
+if(window.Telegram&&window.Telegram.WebApp){window.Telegram.WebApp.ready();window.Telegram.WebApp.expand();}
 var lat=51.7873,lon=28.3275,step=1,pFrom=null,pTo=null,pay=null,drag=false,sx=0,sy=0;
 function el(id){return document.getElementById(id);}
 function upd(){el('cp').textContent='📍 Координаты: '+lat.toFixed(4)+', '+lon.toFixed(4);}
-function ts(e){if(e.touches&&e.touches.length){sx=e.touches[0].clientX;sy=e.touches[0].clientY;}}
-function tm(e){if(e.touches&&e.touches.length){var cx=e.touches[0].clientX,cy=e.touches[0].clientY;lon-=(cx-sx)*0.00004;lat+=(cy-sy)*0.00004;sx=cx;sy=cy;upd();}}
+function ts(e){if(e.touches&&e.touches.length){sx=e.touches.clientX;sy=e.touches.clientY;}}
+function tm(e){if(e.touches&&e.touches.length){var cx=e.touches.clientX,cy=e.touches.clientY;lon-=(cx-sx)*0.00004;lat+=(cy-sy)*0.00004;sx=cx;sy=cy;upd();}}
 function ms(e){drag=true;sx=e.clientX;sy=e.clientY;}
 function mm(e){if(!drag)return;lon-=(e.clientX-sx)*0.00004;lat+=(e.clientY-sy)*0.00004;sx=e.clientX;sy=e.clientY;upd();}
 function mu(){drag=false;}
@@ -62,10 +61,7 @@ navigator.geolocation.getCurrentPosition(function(p){
 lat=p.coords.latitude;lon=p.coords.longitude;upd();
 if(!el('addr').value){el('addr').value='Моё местоположение (GPS)';}
 el('gps').textContent='📡 Моё GPS';
-},function(){
-el('gps').textContent='📡 Моё GPS';
-alert('GPS не поймал — сдвиньте поле пальцем!');
-},{timeout:8000});
+},function(){el('gps').textContent='📡 Моё GPS';alert('Сдвиньте поле пальцем!');},{timeout:8000});
 }
 
 function doFind(){
@@ -103,7 +99,13 @@ pay={from_name:pFrom.name,to_name:pTo.name,plat:pFrom.lat,plon:pFrom.lon,km:km,p
 el('act').style.background='#15803d';
 el('act').textContent='🚀 Заказать такси за '+pr+' BYN';
 }else if(step===3&&pay){
-if(tg){tg.sendData(JSON.stringify(pay));}else{alert('Заказ готов: '+pay.price+' BYN');}
+var wa=(window.Telegram&&window.Telegram.WebApp)?window.Telegram.WebApp:null;
+if(wa&&wa.initData&&wa.initData.length>0){
+wa.sendData(JSON.stringify(pay));
+}else{
+var b64=btoa(unescape(encodeURIComponent(JSON.stringify(pay)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+window.location.href='https://t.me;
+}
 }
 }
 
